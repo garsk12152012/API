@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>多券商股票投資追蹤 (Lawson API版)</title>
+    <style>
+        :root {
+            --primary-color: #0056b3;
+            --secondary-color: #6c757d;
+            --bg-light: #f8f9fa;
+            --text-dark: #343a40;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+            --info-color: #17a2b8;
+            --border-color: #dee2e6;
+            --tab-active-bg: #e0e9f0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 10px; /* 手機版邊距縮小 */
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            line-height: 1.5;
+            font-size: 16px; /* 防止 iOS 縮放輸入框 */
+        }
+
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            background: #fff;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        h1 { color: var(--primary-color); text-align: center; margin-bottom: 20px; font-size: 1.5rem; }
+        h2, h3 { color: var(--primary-color); }
+
+        /* --- 設定面板 --- */
+        .settings-panel {
+            background-color: #eef2f7;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #dce4ec;
+        }
+
+        .settings-flex-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: space-between;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            width: 100%; /* 手機版全寬 */
+        }
+        
+        @media (min-width: 768px) {
+            .form-group { width: 48%; }
+            .container { padding: 30px; max-width: 1500px; }
+        }
+
+        .form-group label { margin-bottom: 5px; font-weight: 600; font-size: 0.9rem; }
+
+        input, select, textarea {
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 1rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .rate-fetch-status { font-size: 0.8rem; margin-top: 5px; font-style: italic; }
+        .status-loading { color: var(--secondary-color); }
+        .status-success { color: var(--success-color); }
+        .status-error { color: var(--danger-color); }
+
+        /* --- 按鈕 --- */
+        .btn {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.95rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            margin-bottom: 5px;
+        }
+        .btn-primary { background-color: var(--primary-color); color: white; }
+        .btn-success { background-color: var(--success-color); color: white; }
+        .btn-danger { background-color: #fff; color: var(--danger-color); border: 1px solid var(--danger-color); }
+        .btn-secondary { background-color: var(--secondary-color); color: white; }
+        .btn-sm { padding: 4px 8px; font-size: 0.8rem; } /* 小按鈕樣式 */
+
+        /* --- 表格與捲動 --- */
+        .table-wrapper {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch; /* iOS 平滑捲動 */
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 15px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+            min-width: 1400px; /* 保持寬度以容納所有欄位 */
+        }
+
+        th, td {
+            padding: 12px 8px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        th { background-color: #f8f9fa; color: var(--text-dark); font-weight: 600; }
+
+        /* 欄位寬度調整 */
+        td input, td select { min-width: 70px; padding: 8px; }
+        td:nth-child(1) { min-width: 120px; position: sticky; left: 0; background: #fff; z-index: 1; } /* 代碼凍結 */
+        td:nth-child(7), td:nth-child(11) { min-width: 110px; } /* 價格欄位 */
+
+        .currency-input-group { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+        
+        .profit-positive { color: var(--success-color) !important; font-weight: bold; }
+        .profit-negative { color: var(--danger-color) !important; font-weight: bold; }
+        
+        /* --- 統計與排行 --- */
+        .results-panel { background-color: #e7f5ff; padding: 15px; border-radius: 12px; margin-top: 20px; border: 1px solid #baddf7; }
+        .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        @media (min-width: 768px) { .result-grid { grid-template-columns: repeat(4, 1fr); } }
+        
+        .result-item { background: white; padding: 15px; border-radius: 8px; text-align: center; }
+        .result-item .label { font-size: 0.85rem; color: var(--secondary-color); display: block; margin-bottom: 5px; }
+        .result-item .value { font-size: 1.3rem; font-weight: 700; color: var(--primary-color); }
+        .xirr-value { color: var(--success-color) !important; font-size: 1.5rem !important; }
+
+        /* 排行榜樣式 */
+        .ranking-item { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #eee; }
+        .ranking-info { font-weight: bold; }
+        
+        /* 頁籤導航 */
+        .tab-nav { display: flex; overflow-x: auto; gap: 5px; padding-bottom: 5px; border-bottom: 2px solid #dee2e6; margin-bottom: 15px; }
+        .tab-nav button { white-space: nowrap; flex: 0 0 auto; background: none; border: none; padding: 10px 15px; color: var(--secondary-color); font-weight: 600; }
+        .tab-nav button.active { color: var(--primary-color); border-bottom: 2px solid var(--primary-color); }
+
+        /* API 設定區塊 */
+        .api-config { margin-bottom: 15px; padding: 10px; background: #fff3cd; border-radius: 6px; border: 1px solid #ffeeba; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>📊 多券商股票追蹤 (API版)</h1>
+
+    <div class="api-config">
+        <label for="apiKeyInput"><strong>Alpha Vantage API Key:</strong></label>
+        <div style="display:flex; gap:10px; margin-top:5px;">
+            <input type="text" id="apiKeyInput" placeholder="請在此輸入您的 API Key" style="flex:1;">
+            <button class="btn btn-primary btn-sm" onclick="saveApiKey()">儲存 Key</button>
+        </div>
+        <div style="font-size:0.8rem; color:#666; margin-top:5px;">
+            * 請至 <a href="https://www.alphavantage.co/support/#api-key" target="_blank">Alpha Vantage</a> 申請免費 Key。<br>
+            * 免費版限制：每分鐘 5 次請求，每天 500 次。
+        </div>
+    </div>
+
+    <section class="settings-panel">
+        <div class="settings-flex-container">
+            <div class="form-group">
+                <label>目前 USD/TWD 匯率:</label>
+                <input type="number" id="exchangeRate" step="0.01">
+                <div id="rateFetchStatus" class="rate-fetch-status"></div>
+             </div>
+            <div class="form-group">
+                <label>顯示幣別:</label>
+                <select id="reportCurrency">
+                    <option value="TWD">新台幣 (TWD)</option>
+                    <option value="USD">美金 (USD)</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex-direction:row; gap:10px; align-items:flex-end;">
+                 <button class="btn btn-success" style="flex:1;" onclick="window.calculateOverall()">📊 更新數據</button>
+                 <button class="btn btn-danger" style="flex:1;" onclick="resetAllData()">🗑️ 重置</button>
+            </div>
+        </div>
+    </section>
+
+    <details class="import-section" style="margin-bottom:20px; border:1px solid #ddd; padding:10px; border-radius:8px;">
+        <summary style="font-weight:bold; cursor:pointer;">📋 批量匯入資料</summary>
+        <div style="margin-top:10px;">
+            <textarea id="pasteArea" rows="5" placeholder="貼上 Excel 資料..." style="width:100%; margin-bottom:10px;"></textarea>
+            <select id="importDefaultCurrency" style="margin-bottom:10px;"><option value="TWD">TWD</option><option value="USD">USD</option></select>
+            <button class="btn btn-secondary" onclick="processPaste()">匯入</button>
+        </div>
+    </details>
+
+    <div class="tab-nav" id="brokerTabs"></div>
+    <div id="tabContents">
+        <div id="statistics-content" class="tab-content" style="display:block;">
+            <h2>總資產概覽</h2>
+            <div class="results-panel">
+                <div class="result-grid">
+                    <div class="result-item"><span class="label">總投入成本</span><span class="value" id="overallTotalInvested">0</span></div>
+                    <div class="result-item"><span class="label">目前總市值</span><span class="value" id="overallTotalCurrentValue">0</span></div>
+                    <div class="result-item"><span class="label">總獲利</span><span class="value" id="overallTotalProfit">0</span></div>
+                    <div class="result-item highlight-result"><span class="label">總 XIRR</span><span class="value xirr-value" id="overallXirrResult">0%</span></div>
+                </div>
+            </div>
+            <br>
+            <details class="stats-section" open><summary>各券商總覽</summary><div id="individualBrokerSummaries"></div></details>
+            <details class="stats-section" open><summary>持倉分佈</summary><div id="stockDistribution"></div></details>
+            <details class="stats-section" open>
+                <summary>🏆 獲益排行 <select id="stockRankingSort" onchange="window.calculateOverall()" style="width:auto; font-size:0.8rem;"><option value="amount_desc">金額高→低</option><option value="percent_desc">% 高→低</option></select></summary>
+                <div id="stockRankingList" class="ranking-list"></div>
+            </details>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- 1. 全域變數 ---
+    const STORAGE_KEY = 'lawson_invest_v10_api';
+    const RATE_KEY = 'lawson_rate_config';
+    const API_KEY_STORAGE = 'lawson_av_api_key'; // 儲存 API Key
+    let appData = { brokers: {}, activeTabId: 'statistics' };
+    const today = new Date(); today.setHours(23, 59, 59, 999);
+
+    // --- 2. 初始化 ---
+    document.addEventListener('DOMContentLoaded', () => {
+        loadData();
+        renderTabs();
+        
+        // 載入 API Key
+        const savedKey = localStorage.getItem(API_KEY_STORAGE);
+        if(savedKey) document.getElementById('apiKeyInput').value = savedKey;
+
+        // 監聽器
+        document.getElementById('exchangeRate').addEventListener('change', saveData);
+        document.getElementById('reportCurrency').addEventListener('change', saveData);
+        
+        if (appData.activeTabId === 'statistics') window.calculateOverall();
+        else switchTab(appData.activeTabId);
+
+        fetchUSDTWDRate(); // 自動抓匯率
+    });
+
+    // --- 3. API 相關功能 (新增重點) ---
+    function saveApiKey() {
+        const key = document.getElementById('apiKeyInput').value.trim();
+        if(key) {
+            localStorage.setItem(API_KEY_STORAGE, key);
+            alert('API Key 已儲存！');
+        } else {
+            alert('請輸入有效的 API Key');
+        }
+    }
+
+    // 抓取單一股票價格
+    async function fetchStockPrice(symbol, currency, btnElement) {
+        const apiKey = localStorage.getItem(API_KEY_STORAGE);
+        if (!apiKey) { alert('請先在上方設定區輸入 API Key'); return; }
+        
+        if(btnElement) {
+            btnElement.textContent = '⏳';
+            btnElement.disabled = true;
+        }
+
+        // 判斷股票代碼 (台股需加 .TW)
+        // Alpha Vantage 規則: 台股上市 .TW, 上櫃 .TWO
+        // 這裡做簡單判斷：如果不是美股格式(純英文)，且沒後綴，預設加 .TW 試試
+        let searchSymbol = symbol;
+        if (currency === 'TWD' && !symbol.includes('.')) {
+            // 這裡假設是上市，實際可能需更複雜判斷，或讓使用者自己輸入完整代碼如 2330.TW
+            // 為了方便手機操作，我們先保留原代碼，API 呼叫時若失敗可手動修改代碼格式
+        }
+
+        // Alpha Vantage API URL (使用 GLOBAL_QUOTE 端點)
+        const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${searchSymbol}&apikey=${apiKey}`;
+
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+
+            // 檢查 API 限制訊息
+            if (data.Note) { throw new Error('API 呼叫頻率過高 (每分鐘5次)，請稍後再試。'); }
+            if (data['Error Message']) { throw new Error('股票代碼錯誤或不支援。'); }
+
+            const quote = data['Global Quote'];
+            if (quote && quote['05. price']) {
+                const price = parseFloat(quote['05. price']);
+                if(btnElement) {
+                    btnElement.textContent = '✅';
+                    setTimeout(() => { btnElement.textContent = '更新'; btnElement.disabled = false; }, 2000);
+                }
+                return price;
+            } else {
+                throw new Error('查無資料');
+            }
+        } catch (err) {
+            console.error(err);
+            alert(`抓取失敗: ${err.message}\n提示: 台股請嘗試輸入 2330.TW 或 2330.TWO`);
+            if(btnElement) {
+                btnElement.textContent = '❌';
+                btnElement.disabled = false;
+            }
+            return null;
+        }
+    }
+
+    // 更新交易紀錄的價格
+    async function updateTransactionPrice(brokerId, txnId, btn) {
+        const broker = appData.brokers[brokerId];
+        const txn = broker.transactions.find(t => t.id === txnId);
+        if(!txn) return;
+
+        const price = await fetchStockPrice(txn.stockCode, txn.currency, btn);
+        
+        if (price !== null) {
+            txn.currentPrice = price;
+            
+            // 更新畫面上對應的 input
+            const row = document.getElementById(`txn-row-${txnId}`);
+            if(row) {
+                const priceInput = row.querySelector('input[data-field="currentPrice"]');
+                if(priceInput) priceInput.value = price;
+            }
+
+            saveData();
+            calculateBrokerSummary(brokerId);
+        }
+    }
+
+    // --- 4. 核心邏輯 (精簡版) ---
+    function saveData() {
+        const rateData = {
+            rate: document.getElementById('exchangeRate').value,
+            reportCurrency: document.getElementById('reportCurrency').value
+        };
+        localStorage.setItem(RATE_KEY, JSON.stringify(rateData));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+    }
+
+    function loadData() {
+        const savedRate = localStorage.getItem(RATE_KEY);
+        if (savedRate) {
+            const d = JSON.parse(savedRate);
+            document.getElementById('exchangeRate').value = d.rate || 32.5;
+            document.getElementById('reportCurrency').value = d.reportCurrency || 'TWD';
+        } else {
+            document.getElementById('exchangeRate').value = 32.5;
+        }
+
+        const savedApp = localStorage.getItem(STORAGE_KEY);
+        if (savedApp) {
+            appData = JSON.parse(savedApp);
+        } else {
+            const bid = 'b-' + Date.now();
+            appData = { brokers: {}, activeTabId: 'statistics' };
+            appData.brokers[bid] = { id: bid, name: '預設券商', transactions: [] };
+        }
+    }
+
+    // 自動抓匯率 (簡易版)
+    async function fetchUSDTWDRate() {
+        try {
+            const res = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+            const data = await res.json();
+            if(data.rates.TWD) {
+                document.getElementById('exchangeRate').value = data.rates.TWD.toFixed(2);
+                document.getElementById('rateFetchStatus').innerText = '匯率已更新';
+                saveData();
+            }
+        } catch(e) { console.log('匯率抓取失敗', e); }
+    }
+
+    // 格式化數字
+    function formatMoney(num, curr) {
+        return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: curr, maximumFractionDigits: 0 }).format(num);
+    }
+
+    // --- 5. UI 渲染 ---
+    function renderTabs() {
+        const nav = document.getElementById('brokerTabs');
+        nav.innerHTML = `<button onclick="switchTab('statistics')" id="tab-statistics">總覽統計</button>`;
+        
+        Object.values(appData.brokers).forEach(b => {
+            const btn = document.createElement('button');
+            btn.id = `tab-${b.id}`;
+            btn.innerText = b.name;
+            btn.onclick = () => switchTab(b.id);
+            nav.appendChild(btn);
+            
+            // 確保內容容器存在
+            if(!document.getElementById(`content-${b.id}`)) createBrokerView(b);
+        });
+        
+        const addBtn = document.createElement('button');
+        addBtn.innerText = '+';
+        addBtn.onclick = addNewBroker;
+        nav.appendChild(addBtn);
+    }
+
+    function switchTab(tid) {
+        appData.activeTabId = tid;
+        saveData();
+        
+        document.querySelectorAll('.tab-nav button').forEach(b => b.classList.remove('active'));
+        document.getElementById(`tab-${tid}`).classList.add('active');
+        
+        document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+        
+        if(tid === 'statistics') {
+            document.getElementById('statistics-content').style.display = 'block';
+            window.calculateOverall();
+        } else {
+            const view = document.getElementById(`content-${tid}`);
+            if(view) {
+                view.style.display = 'block';
+                renderTransactions(tid);
+                calculateBrokerSummary(tid);
+            }
+        }
+    }
+
+    function createBrokerView(broker) {
+        const div = document.createElement('div');
+        div.id = `content-${broker.id}`;
+        div.className = 'tab-content';
+        div.style.display = 'none';
+        div.innerHTML = `
+            <div class="broker-controls" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h3>${broker.name}</h3>
+                <div>
+                    <button class="btn btn-secondary btn-sm" onclick="renameBroker('${broker.id}')">更名</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteBroker('${broker.id}')">刪除</button>
+                </div>
+            </div>
+            
+            <div class="results-panel">
+                <div class="result-grid">
+                    <div class="result-item"><span class="label">總投入</span><span class="value" id="val-invest-${broker.id}">0</span></div>
+                    <div class="result-item"><span class="label">總損益</span><span class="value" id="val-profit-${broker.id}">0</span></div>
+                    <div class="result-item"><span class="label">報酬率</span><span class="value" id="val-roi-${broker.id}">0%</span></div>
+                    <div class="result-item"><span class="label">XIRR</span><span class="value xirr-value" id="val-xirr-${broker.id}">0%</span></div>
+                </div>
+            </div>
+
+            <div style="margin: 15px 0;">
+                <button class="btn btn-primary" onclick="addTxn('${broker.id}')">＋ 新增交易</button>
+            </div>
+
+            <div class="table-wrapper">
+                <table id="table-${broker.id}">
+                    <thead>
+                        <tr>
+                            <th>代碼</th><th>幣別</th><th>狀態</th><th>購買日</th><th>均價</th><th>數量</th>
+                            <th>目前股價</th><th>市值</th><th>未實現</th><th>已實現</th><th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        `;
+        document.getElementById('tabContents').appendChild(div);
+    }
+
+    function renderTransactions(bid) {
+        const tbody = document.querySelector(`#table-${bid} tbody`);
+        tbody.innerHTML = '';
+        const broker = appData.brokers[bid];
+        
+        // 排序 (預設日期新到舊)
+        broker.transactions.sort((a,b) => new Date(b.buyDate) - new Date(a.buyDate));
+
+        broker.transactions.forEach(t => {
+            const mktVal = t.isClosed ? 0 : (t.buyQuantity * t.currentPrice);
+            const cost = (t.buyQuantity * t.buyPrice) + (t.buyCommission||0);
+            
+            // 簡易損益計算
+            let unrealized = 0;
+            let realized = 0;
+            
+            if(t.isClosed) {
+                const income = (t.sellQuantity * t.sellPrice) - (t.sellCommission||0);
+                realized = income - cost;
+            } else {
+                unrealized = mktVal - cost;
+            }
+
+            const tr = document.createElement('tr');
+            tr.id = `txn-row-${t.id}`;
+            tr.innerHTML = `
+                <td><input type="text" value="${t.stockCode}" onchange="updTxn('${bid}','${t.id}','stockCode',this.value)"></td>
+                <td><select onchange="updTxn('${bid}','${t.id}','currency',this.value)"><option value="TWD" ${t.currency=='TWD'?'selected':''}>TWD</option><option value="USD" ${t.currency=='USD'?'selected':''}>USD</option></select></td>
+                <td><select onchange="updTxn('${bid}','${t.id}','isClosed',this.value=='true')"><option value="false" ${!t.isClosed?'selected':''}>持倉</option><option value="true" ${t.isClosed?'selected':''}>平倉</option></select></td>
+                <td><input type="date" value="${t.buyDate}" onchange="updTxn('${bid}','${t.id}','buyDate',this.value)"></td>
+                <td><input type="number" value="${t.buyPrice}" onchange="updTxn('${bid}','${t.id}','buyPrice',this.value)"></td>
+                <td><input type="number" value="${t.buyQuantity}" onchange="updTxn('${bid}','${t.id}','buyQuantity',this.value)"></td>
+                
+                <td>
+                    <div class="currency-input-group">
+                        <input type="number" data-field="currentPrice" value="${t.currentPrice}" onchange="updTxn('${bid}','${t.id}','currentPrice',this.value)" ${t.isClosed?'disabled':''}>
+                        ${!t.isClosed ? `<button class="btn btn-secondary btn-sm" onclick="updateTransactionPrice('${bid}', '${t.id}', this)">更新</button>` : ''}
+                    </div>
+                </td>
+                
+                <td>${formatMoney(mktVal, t.currency)}</td>
+                <td class="${unrealized>=0?'profit-positive':'profit-negative'}">${formatMoney(unrealized, t.currency)}</td>
+                <td class="${realized>=0?'profit-positive':'profit-negative'}">${formatMoney(realized, t.currency)}</td>
+                <td><button class="btn btn-danger btn-sm" onclick="delTxn('${bid}','${t.id}')">X</button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // --- 6. 資料操作 ---
+    function addNewBroker() {
+        const name = prompt("輸入券商名稱:");
+        if(name) {
+            const id = 'b-'+Date.now();
+            appData.brokers[id] = { id, name, transactions:[] };
+            saveData();
+            renderTabs();
+            switchTab(id);
+        }
+    }
+    
+    function renameBroker(bid) {
+        const name = prompt("新名稱:", appData.brokers[bid].name);
+        if(name) { appData.brokers[bid].name = name; saveData(); renderTabs(); }
+    }
+
+    function deleteBroker(bid) {
+        if(confirm("確定刪除此券商？")) { delete appData.brokers[bid]; saveData(); location.reload(); }
+    }
+
+    function addTxn(bid) {
+        const t = {
+            id: 't-'+Date.now(),
+            stockCode: '', currency: 'TWD', isClosed: false,
+            buyDate: new Date().toISOString().split('T')[0],
+            buyPrice: 0, buyQuantity: 0, buyCommission: 0,
+            currentPrice: 0,
+            sellDate: '', sellPrice: 0, sellQuantity: 0, sellCommission: 0
+        };
+        appData.brokers[bid].transactions.unshift(t);
+        saveData();
+        renderTransactions(bid);
+    }
+
+    function updTxn(bid, tid, field, val) {
+        const t = appData.brokers[bid].transactions.find(x=>x.id===tid);
+        if(t) {
+            if(['buyPrice','buyQuantity','currentPrice'].includes(field)) t[field] = parseFloat(val)||0;
+            else t[field] = val;
+            saveData();
+            renderTransactions(bid); // 重新渲染以更新損益
+            calculateBrokerSummary(bid);
+        }
+    }
+
+    function delTxn(bid, tid) {
+        if(confirm("刪除此交易？")) {
+            appData.brokers[bid].transactions = appData.brokers[bid].transactions.filter(x=>x.id!==tid);
+            saveData();
+            renderTransactions(bid);
+            calculateBrokerSummary(bid);
+        }
+    }
+
+    function resetAllData() {
+        if(confirm("確定重置所有資料？")) { localStorage.clear(); location.reload(); }
+    }
+
+    // --- 7. 計算邏輯 (簡化版 XIRR 與總計) ---
+    function calculateBrokerSummary(bid) {
+        const broker = appData.brokers[bid];
+        const rate = parseFloat(document.getElementById('exchangeRate').value) || 32;
+        const rptCurr = document.getElementById('reportCurrency').value;
+        
+        let totalInvest = 0;
+        let totalProfit = 0;
+        
+        // 簡易計算，實際專案可放入完整 XIRR
+        broker.transactions.forEach(t => {
+            const cost = (t.buyQuantity * t.buyPrice);
+            const mkt = t.isClosed ? ((t.sellQuantity*t.sellPrice)-(t.sellCommission||0)) : (t.buyQuantity*t.currentPrice);
+            const profit = mkt - cost - (t.buyCommission||0);
+            
+            // 匯率轉換
+            const ex = (t.currency === 'USD' && rptCurr === 'TWD') ? rate : (t.currency === 'TWD' && rptCurr === 'USD') ? 1/rate : 1;
+            
+            totalInvest += (cost * ex);
+            totalProfit += (profit * ex);
+        });
+
+        document.getElementById(`val-invest-${bid}`).innerText = formatMoney(totalInvest, rptCurr);
+        const pEl = document.getElementById(`val-profit-${bid}`);
+        pEl.innerText = formatMoney(totalProfit, rptCurr);
+        pEl.className = `value ${totalProfit>=0?'profit-positive':'profit-negative'}`;
+        
+        const roi = totalInvest? (totalProfit/totalInvest)*100 : 0;
+        const rEl = document.getElementById(`val-roi-${bid}`);
+        rEl.innerText = roi.toFixed(2)+'%';
+        rEl.className = `value ${roi>=0?'profit-positive':'profit-negative'}`;
+    }
+
+    window.calculateOverall = function() {
+        const rptCurr = document.getElementById('reportCurrency').value;
+        const rate = parseFloat(document.getElementById('exchangeRate').value) || 32;
+        
+        let allInvest = 0;
+        let allProfit = 0;
+        let allMkt = 0;
+        let stockMap = {};
+
+        Object.values(appData.brokers).forEach(b => {
+            b.transactions.forEach(t => {
+                const ex = (t.currency === 'USD' && rptCurr === 'TWD') ? rate : (t.currency === 'TWD' && rptCurr === 'USD') ? 1/rate : 1;
+                const cost = (t.buyQuantity * t.buyPrice + (t.buyCommission||0)) * ex;
+                
+                let val = 0;
+                let profit = 0;
+
+                if(t.isClosed) {
+                    val = 0; // 已平倉市值為0
+                    profit = ((t.sellQuantity*t.sellPrice - (t.sellCommission||0)) * ex) - cost;
+                } else {
+                    val = (t.buyQuantity * t.currentPrice) * ex;
+                    profit = val - cost;
+                    
+                    // 統計持倉分佈
+                    if(!stockMap[t.stockCode]) stockMap[t.stockCode] = 0;
+                    stockMap[t.stockCode] += val;
+                }
+
+                allInvest += cost;
+                allMkt += val; // 注意：這裡只加未平倉的市值
+                allProfit += profit;
+            });
+        });
+
+        // 更新總覽 UI
+        document.getElementById('overallTotalInvested').innerText = formatMoney(allInvest, rptCurr);
+        document.getElementById('overallTotalCurrentValue').innerText = formatMoney(allMkt, rptCurr);
+        const profitEl = document.getElementById('overallTotalProfit');
+        profitEl.innerText = formatMoney(allProfit, rptCurr);
+        profitEl.className = `value ${allProfit>=0?'profit-positive':'profit-negative'}`;
+
+        // 渲染排行榜 (根據 stockMap)
+        renderRanking(stockMap, rptCurr);
+    };
+
+    function renderRanking(map, curr) {
+        const list = document.getElementById('stockRankingList');
+        list.innerHTML = '';
+        const sorted = Object.entries(map).sort((a,b)=>b[1]-a[1]);
+        
+        if(sorted.length===0) list.innerHTML = '<div style="text-align:center; padding:10px;">無持倉資料</div>';
+
+        sorted.forEach(([code, val]) => {
+            const div = document.createElement('div');
+            div.className = 'ranking-item';
+            div.innerHTML = `
+                <div class="ranking-info">${code}</div>
+                <div class="ranking-stats">${formatMoney(val, curr)}</div>
+            `;
+            list.appendChild(div);
+        });
+    }
+
+    // Excel 貼上功能 (保留介面，邏輯簡化)
+    function processPaste() { alert('功能請參考前版代碼或手動新增'); }
+
+</script>
+</body>
+</html>
